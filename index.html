@@ -123,13 +123,16 @@
         <main class="main-content">
             <!-- Editor Pane -->
             <section class="editor-pane" aria-label="Markdown editor">
-                <textarea
-                    id="editor"
-                    class="editor-textarea"
-                    placeholder="Start writing in markdown..."
-                    spellcheck="true"
-                    aria-label="Markdown editor"
-                ></textarea>
+                <div class="editor-container">
+                    <div id="editor-highlight" class="editor-highlight" aria-hidden="true"></div>
+                    <textarea
+                        id="editor"
+                        class="editor-textarea"
+                        placeholder="Start writing in markdown..."
+                        spellcheck="true"
+                        aria-label="Markdown editor"
+                    ></textarea>
+                </div>
             </section>
 
             <!-- Resizable Divider -->

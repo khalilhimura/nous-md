@@ -12,6 +12,7 @@
 const AppState = {
     editor: null,
     preview: null,
+    highlightDiv: null,
     fileInput: null,
     currentFileName: 'untitled.md',
     saveTimeout: null,
@@ -218,6 +219,61 @@ const MarkdownParser = {
 };
 
 // ============================================
+// Syntax Highlighter
+// ============================================
+
+const SyntaxHighlighter = {
+    highlight(text) {
+        if (!text) return '';
+
+        // Escape HTML
+        text = this.escapeHtml(text);
+
+        // Apply syntax highlighting
+        // Process in order to avoid conflicts
+
+        // Code blocks (```)
+        text = text.replace(/```([\s\S]*?)```/g, '<span class="syntax-code-block">```$1```</span>');
+
+        // Inline code (`)
+        text = text.replace(/`([^`]+)`/g, '<span class="syntax-code">`$1`</span>');
+
+        // Headers
+        text = text.replace(/^(#{1,6})\s+(.+)$/gm, '<span class="syntax-header">$1 $2</span>');
+
+        // Bold
+        text = text.replace(/\*\*([^*]+)\*\*/g, '<span class="syntax-bold">**$1**</span>');
+        text = text.replace(/__([^_]+)__/g, '<span class="syntax-bold">__$1__</span>');
+
+        // Italic
+        text = text.replace(/\*([^*]+)\*/g, '<span class="syntax-italic">*$1*</span>');
+        text = text.replace(/_([^_]+)_/g, '<span class="syntax-italic">_$1_</span>');
+
+        // Links and images
+        text = text.replace(/!?\[([^\]]*)\]\(([^)]+)\)/g, '<span class="syntax-link">$&</span>');
+
+        // Lists
+        text = text.replace(/^([\*\-]|\d+\.)\s+/gm, '<span class="syntax-list">$1 </span>');
+
+        // Blockquotes
+        text = text.replace(/^(&gt;)\s+/gm, '<span class="syntax-quote">&gt; </span>');
+
+        return text;
+    },
+
+    escapeHtml(text) {
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return text.replace(/[&<>"']/g, m => map[m]);
+    }
+};
+
+// ============================================
 // Editor Functions
 // ============================================
 
@@ -229,8 +285,17 @@ const Editor = {
         const markdown = AppState.editor.value;
         const html = MarkdownParser.parse(markdown);
         AppState.preview.innerHTML = html;
+        this.updateSyntaxHighlight(markdown);
         this.updateWordCount(markdown);
         this.scheduleSave();
+    },
+
+    /**
+     * Update syntax highlighting in editor
+     */
+    updateSyntaxHighlight(text) {
+        const highlighted = SyntaxHighlighter.highlight(text);
+        AppState.highlightDiv.innerHTML = highlighted;
     },
 
     /**
@@ -602,6 +667,12 @@ const EventListeners = {
             Editor.updatePreview();
         });
 
+        // Sync scroll between editor and highlight layer
+        AppState.editor.addEventListener('scroll', () => {
+            AppState.highlightDiv.scrollTop = AppState.editor.scrollTop;
+            AppState.highlightDiv.scrollLeft = AppState.editor.scrollLeft;
+        });
+
         // Toolbar buttons
         document.querySelectorAll('.toolbar-btn').forEach(btn => {
             const action = btn.getAttribute('data-action');
@@ -636,6 +707,7 @@ function init() {
     // Get DOM elements
     AppState.editor = document.getElementById('editor');
     AppState.preview = document.getElementById('preview');
+    AppState.highlightDiv = document.getElementById('editor-highlight');
     AppState.fileInput = document.getElementById('file-input');
 
     // Load theme

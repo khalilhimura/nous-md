@@ -184,9 +184,38 @@ body {
     overflow: hidden;
 }
 
-.editor-textarea {
+.editor-container {
     flex: 1;
+    position: relative;
+    overflow: hidden;
+    background-color: var(--color-surface);
+}
+
+.editor-highlight {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
+    height: 100%;
+    padding: var(--space-lg);
+    font-family: var(--font-family-mono);
+    font-size: 15px;
+    line-height: var(--line-height-body);
+    color: transparent;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-y: auto;
+    overflow-x: hidden;
+    pointer-events: none;
+    z-index: 1;
+}
+
+.editor-textarea {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
     padding: var(--space-lg);
     border: none;
     outline: none;
@@ -195,8 +224,13 @@ body {
     font-size: 15px;
     line-height: var(--line-height-body);
     color: var(--color-text);
-    background-color: var(--color-surface);
-    transition: background-color var(--transition-fast), color var(--transition-fast);
+    background-color: transparent;
+    transition: color var(--transition-fast);
+    z-index: 2;
+    overflow-y: auto;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 .editor-textarea::placeholder {
@@ -204,8 +238,42 @@ body {
     opacity: 0.5;
 }
 
-.editor-textarea:focus {
-    background-color: var(--color-surface);
+/* Syntax Highlighting Colors */
+.editor-highlight .syntax-header {
+    color: #0052A3;
+}
+
+.editor-highlight .syntax-bold {
+    color: var(--color-text);
+}
+
+.editor-highlight .syntax-italic {
+    color: var(--color-text-secondary);
+}
+
+.editor-highlight .syntax-code {
+    color: var(--color-accent);
+}
+
+.editor-highlight .syntax-code-block {
+    color: #0052A3;
+}
+
+.editor-highlight .syntax-link {
+    color: var(--color-accent);
+}
+
+.editor-highlight .syntax-list {
+    color: #0052A3;
+}
+
+.editor-highlight .syntax-quote {
+    color: var(--color-text-secondary);
+}
+
+.editor-highlight .syntax-comment {
+    color: var(--color-text-secondary);
+    opacity: 0.6;
 }
 
 /* ============================================
