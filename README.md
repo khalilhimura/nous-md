@@ -26,6 +26,7 @@ NousMD embodies Dieter Rams' 10 principles of good design:
 ### Core Functionality
 - **Split-pane interface** - Side-by-side editor and live preview
 - **Real-time preview** - See your markdown rendered instantly
+- **Syntax highlighting** - Subtle color-coded markdown elements as you type
 - **File operations** - Open and save `.md` files locally
 - **Auto-save** - Content automatically saved to browser localStorage
 - **Dark mode** - Toggle between light and dark themes
@@ -215,8 +216,8 @@ A: Auto-saved to browser localStorage. Use Save button to download `.md` files.
 **Q: Can I use this on mobile?**
 A: Optimized for desktop/tablet. Mobile works but experience is limited.
 
-**Q: Why no syntax highlighting in the editor?**
-A: Following Rams' principle of "as little design as possible." The focus is on writing, not colorful text.
+**Q: How does syntax highlighting work?**
+A: NousMD uses subtle, restrained color highlighting that enhances readability without distraction. It follows Rams' principle of "as little design as possible" - just enough visual feedback to improve the writing experience.
 
 **Q: Will you add [feature X]?**
 A: Only if it serves a clear user need without adding complexity. Feature requests welcome but will be evaluated against design principles.
