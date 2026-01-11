@@ -6,6 +6,100 @@
 'use strict';
 
 // ============================================
+// Security - URL Sanitization
+// ============================================
+
+const SecurityUtils = {
+    /**
+     * Whitelist of safe URL protocols
+     * Following OWASP recommendations for markdown editors
+     */
+    SAFE_PROTOCOLS: ['http:', 'https:', 'mailto:', 'ftp:', 'ftps:'],
+
+    /**
+     * Sanitize URL to prevent XSS attacks
+     * Blocks dangerous protocols: javascript:, data:, vbscript:, file:
+     *
+     * @param {string} url - The URL to sanitize
+     * @returns {string} - Sanitized URL or empty string if dangerous
+     */
+    sanitizeUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return '';
+        }
+
+        // Trim whitespace and normalize
+        const trimmed = url.trim();
+
+        // Empty or whitespace-only URLs are safe (will result in broken link)
+        if (!trimmed) {
+            return '';
+        }
+
+        // Decode URL-encoded characters to prevent bypass attempts
+        let decoded;
+        try {
+            decoded = decodeURIComponent(trimmed);
+        } catch (e) {
+            // Invalid URL encoding - reject
+            return '';
+        }
+
+        // Normalize to lowercase for protocol check (handles JAvaScRipt:)
+        const normalized = decoded.toLowerCase().trim();
+
+        // Remove leading/trailing whitespace and control characters
+        const cleaned = normalized.replace(/^[\s\u0000-\u001F\u007F-\u009F]+|[\s\u0000-\u001F\u007F-\u009F]+$/g, '');
+
+        // Check for dangerous protocols
+        // Handle both absolute URLs (protocol:) and protocol-relative (//)
+
+        // Explicit dangerous protocol check
+        if (cleaned.startsWith('javascript:') ||
+            cleaned.startsWith('data:') ||
+            cleaned.startsWith('vbscript:') ||
+            cleaned.startsWith('file:') ||
+            cleaned.startsWith('about:')) {
+            console.warn('Blocked dangerous URL protocol:', trimmed);
+            return '';
+        }
+
+        // If URL has a protocol, validate it's in whitelist
+        const protocolMatch = cleaned.match(/^([a-z][a-z0-9+.-]*:)/);
+        if (protocolMatch) {
+            const protocol = protocolMatch[1];
+            if (!this.SAFE_PROTOCOLS.includes(protocol)) {
+                console.warn('Blocked non-whitelisted protocol:', protocol, 'in URL:', trimmed);
+                return '';
+            }
+        }
+
+        // Relative URLs (no protocol) are safe - they resolve relative to current origin
+        // Protocol-relative URLs (//) are safe - they inherit current protocol
+
+        // Return original trimmed URL (not decoded) to preserve encoding
+        return trimmed;
+    },
+
+    /**
+     * Escape HTML attribute value for safe insertion
+     * Additional layer of defense for URL attributes
+     *
+     * @param {string} value - The attribute value to escape
+     * @returns {string} - Escaped attribute value
+     */
+    escapeAttribute(value) {
+        if (!value) return '';
+        return value
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+};
+
+// ============================================
 // State Management
 // ============================================
 
@@ -55,10 +149,18 @@ const MarkdownParser = {
         html = this.parseLists(html);
 
         // Parse images (before links)
-        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1">');
+        html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (match, alt, url) => {
+            const safeUrl = SecurityUtils.sanitizeUrl(url);
+            const safeAlt = alt; // Already escaped by escapeHtml() earlier
+            return safeUrl ? `<img src="${safeUrl}" alt="${safeAlt}">` : `<span>[Image: ${safeAlt}]</span>`;
+        });
 
         // Parse links
-        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>');
+        html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+            const safeUrl = SecurityUtils.sanitizeUrl(url);
+            const safeText = text; // Already escaped by escapeHtml() earlier
+            return safeUrl ? `<a href="${safeUrl}">${safeText}</a>` : `<span>[${safeText}]</span>`;
+        });
 
         // Parse bold and italic
         html = html.replace(/\*\*\*([^*]+)\*\*\*/g, '<strong><em>$1</em></strong>');
