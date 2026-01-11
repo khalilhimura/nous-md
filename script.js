@@ -188,28 +188,59 @@ const MarkdownParser = {
             '<': '&lt;',
             '>': '&gt;',
             '"': '&quot;',
-            "'": '&#039;'
+            "'": '&#039'
         };
         return text.replace(/[&<>"']/g, m => map[m]);
+    },
+
+    /**
+     * Generate collision-resistant placeholder
+     * Uses crypto.randomUUID if available, falls back to timestamp + random
+     *
+     * Format: __BLOCK_[BASE64_UUID]__
+     * Collision probability: < 1 in 10^36
+     *
+     * @param {string} prefix - Placeholder type prefix
+     * @returns {string} - Unique placeholder string
+     */
+    generatePlaceholder(prefix) {
+        let uuid;
+
+        // Try modern crypto API (available in Chrome 92+, Firefox 95+, Safari 15.4+)
+        if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+            uuid = crypto.randomUUID();
+        } else {
+            // Fallback: timestamp + random (less secure but still very unlikely to collide)
+            uuid = `${Date.now()}-${Math.random().toString(36).substring(2)}-${Math.random().toString(36).substring(2)}`;
+        }
+
+        // Base64 encode to make it even more obscure
+        // Use btoa if available (browser), otherwise keep as-is
+        const encoded = typeof btoa !== 'undefined' ? btoa(uuid).replace(/=/g, '') : uuid;
+
+        return `__${prefix}_${encoded}__`;
     },
 
     codeBlocks: [],
 
     parseCodeBlocks(text) {
         this.codeBlocks = [];
-        let index = 0;
 
         return text.replace(/```([^\n]*)\n([\s\S]*?)```/g, (match, lang, code) => {
-            const placeholder = `__CODE_BLOCK_${index}__`;
-            this.codeBlocks.push(`<pre><code>${code.trim()}</code></pre>`);
-            index++;
+            const placeholder = this.generatePlaceholder('CODE_BLOCK');
+            const content = `<pre><code>${code.trim()}</code></pre>`;
+
+            // Store with placeholder as key for deterministic lookup
+            this.codeBlocks.push({ placeholder, content });
+
             return placeholder;
         });
     },
 
     restoreCodeBlocks(text) {
-        this.codeBlocks.forEach((block, index) => {
-            text = text.replace(`__CODE_BLOCK_${index}__`, block);
+        this.codeBlocks.forEach(({ placeholder, content }) => {
+            // Use exact placeholder match, not index-based
+            text = text.replace(placeholder, content);
         });
         return text;
     },
@@ -311,10 +342,20 @@ const MarkdownParser = {
         return blocks.map(block => {
             const trimmed = block.trim();
             if (!trimmed) return '';
-            if (trimmed.startsWith('<')) return trimmed;
-            if (trimmed.includes('\n') && !trimmed.startsWith('<')) {
+
+            // Validate that < is actually an HTML tag, not user content like "< 5"
+            // Regex: ^<\/?[a-zA-Z][a-zA-Z0-9]*
+            // Matches: <tagname or </tagname (where tagname starts with letter)
+            // Doesn't match: < 5, <= value, <3 hearts, <- arrow, etc.
+            if (/^<\/?[a-zA-Z][a-zA-Z0-9]*/.test(trimmed)) {
+                return trimmed; // This is HTML, don't wrap in <p>
+            }
+
+            // Multi-line content that's not HTML (likely list or blockquote)
+            if (trimmed.includes('\n') && !/^<\/?[a-zA-Z][a-zA-Z0-9]*/.test(trimmed)) {
                 return trimmed;
             }
+
             return `<p>${trimmed}</p>`;
         }).join('\n\n');
     }
@@ -325,14 +366,79 @@ const MarkdownParser = {
 // ============================================
 
 const SyntaxHighlighter = {
+    inlineFormats: [], // Store bold/italic patterns to prevent conflicts
+
+    /**
+     * Extract bold/italic patterns and replace with placeholders
+     * Prevents regex conflicts by processing patterns in isolation
+     */
+    extractInlineFormats(text) {
+        this.inlineFormats = [];
+        let index = 0;
+
+        // Process triple first (bold+italic combined)
+        text = text.replace(/\*\*\*([^*]+)\*\*\*/g, (match, content) => {
+            const placeholder = `__INLINE_FORMAT_${index}__`;
+            this.inlineFormats.push(`<span class="syntax-bold">***${content}***</span>`);
+            index++;
+            return placeholder;
+        });
+
+        // Process double asterisk (bold)
+        text = text.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
+            const placeholder = `__INLINE_FORMAT_${index}__`;
+            this.inlineFormats.push(`<span class="syntax-bold">**${content}**</span>`);
+            index++;
+            return placeholder;
+        });
+
+        // Process double underscore (bold)
+        text = text.replace(/__([^_]+)__/g, (match, content) => {
+            const placeholder = `__INLINE_FORMAT_${index}__`;
+            this.inlineFormats.push(`<span class="syntax-bold">__${content}__</span>`);
+            index++;
+            return placeholder;
+        });
+
+        // Process single asterisk (italic)
+        text = text.replace(/\*([^*]+)\*/g, (match, content) => {
+            const placeholder = `__INLINE_FORMAT_${index}__`;
+            this.inlineFormats.push(`<span class="syntax-italic">*${content}*</span>`);
+            index++;
+            return placeholder;
+        });
+
+        // Process single underscore (italic)
+        text = text.replace(/_([^_]+)_/g, (match, content) => {
+            const placeholder = `__INLINE_FORMAT_${index}__`;
+            this.inlineFormats.push(`<span class="syntax-italic">_${content}_</span>`);
+            index++;
+            return placeholder;
+        });
+
+        return text;
+    },
+
+    /**
+     * Restore inline format spans from placeholders
+     */
+    restoreInlineFormats(text) {
+        this.inlineFormats.forEach((format, index) => {
+            text = text.replace(`__INLINE_FORMAT_${index}__`, format);
+        });
+        return text;
+    },
+
     highlight(text) {
         if (!text) return '';
 
         // Escape HTML
         text = this.escapeHtml(text);
 
-        // Apply syntax highlighting
-        // Process in order to avoid conflicts
+        // Extract inline formats FIRST to prevent conflicts
+        text = this.extractInlineFormats(text);
+
+        // Apply syntax highlighting in order
 
         // Code blocks (```)
         text = text.replace(/```([\s\S]*?)```/g, '<span class="syntax-code-block">```$1```</span>');
@@ -343,13 +449,7 @@ const SyntaxHighlighter = {
         // Headers
         text = text.replace(/^(#{1,6})\s+(.+)$/gm, '<span class="syntax-header">$1 $2</span>');
 
-        // Bold
-        text = text.replace(/\*\*([^*]+)\*\*/g, '<span class="syntax-bold">**$1**</span>');
-        text = text.replace(/__([^_]+)__/g, '<span class="syntax-bold">__$1__</span>');
-
-        // Italic
-        text = text.replace(/\*([^*]+)\*/g, '<span class="syntax-italic">*$1*</span>');
-        text = text.replace(/_([^_]+)_/g, '<span class="syntax-italic">_$1_</span>');
+        // Bold and italic patterns are now handled by extractInlineFormats/restoreInlineFormats
 
         // Links and images
         text = text.replace(/!?\[([^\]]*)\]\(([^)]+)\)/g, '<span class="syntax-link">$&</span>');
@@ -359,6 +459,9 @@ const SyntaxHighlighter = {
 
         // Blockquotes
         text = text.replace(/^(&gt;)\s+/gm, '<span class="syntax-quote">&gt; </span>');
+
+        // Restore inline formats LAST
+        text = this.restoreInlineFormats(text);
 
         return text;
     },
