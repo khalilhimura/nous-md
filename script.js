@@ -60,7 +60,7 @@ const SecurityUtils = {
             cleaned.startsWith('vbscript:') ||
             cleaned.startsWith('file:') ||
             cleaned.startsWith('about:')) {
-            console.warn('Blocked dangerous URL protocol:', trimmed);
+            Logger.warn('Blocked dangerous URL protocol:', trimmed);
             return '';
         }
 
@@ -69,7 +69,7 @@ const SecurityUtils = {
         if (protocolMatch) {
             const protocol = protocolMatch[1];
             if (!this.SAFE_PROTOCOLS.includes(protocol)) {
-                console.warn('Blocked non-whitelisted protocol:', protocol, 'in URL:', trimmed);
+                Logger.warn('Blocked non-whitelisted protocol:', protocol, 'in URL:', trimmed);
                 return '';
             }
         }
@@ -136,6 +136,111 @@ const PerformanceUtils = {
                 rafId = null;
             });
         };
+    }
+};
+
+// ============================================
+// Configuration Constants
+// ============================================
+
+const CONFIG = {
+    MAX_FILE_SIZE: 10 * 1024 * 1024,  // 10 MB
+    ALLOWED_FILE_TYPES: ['.md', '.markdown', '.txt'],
+    SAVE_DEBOUNCE_MS: 1000,
+    EDITOR_DEBOUNCE_MS: 150,
+    DIVIDER_MIN_PERCENT: 20,
+    DIVIDER_MAX_PERCENT: 80,
+    DIVIDER_KEYBOARD_STEP: 5,
+    TAB_SPACES: '    '
+};
+
+// ============================================
+// Logging Utility
+// ============================================
+
+const Logger = {
+    info(message, ...args) {
+        console.log(`[NousMD] ${message}`, ...args);
+    },
+
+    warn(message, ...args) {
+        console.warn(`[NousMD] ${message}`, ...args);
+    },
+
+    error(message, error, ...args) {
+        console.error(`[NousMD] ${message}`, error, ...args);
+    }
+};
+
+// ============================================
+// Modal Dialog Utility
+// ============================================
+
+const ModalDialog = {
+    overlay: null,
+    form: null,
+    input: null,
+    resolve: null,
+
+    init() {
+        this.overlay = document.getElementById('modal-overlay');
+        this.form = document.getElementById('modal-form');
+        this.input = document.getElementById('modal-input');
+
+        // Close button
+        this.overlay.querySelector('.modal-close').addEventListener('click', () => {
+            this.close(null);
+        });
+
+        // Cancel button
+        this.overlay.querySelector('.modal-btn-cancel').addEventListener('click', () => {
+            this.close(null);
+        });
+
+        // Form submit
+        this.form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            this.close(this.input.value);
+        });
+
+        // Overlay click (outside dialog)
+        this.overlay.addEventListener('click', (e) => {
+            if (e.target === this.overlay) {
+                this.close(null);
+            }
+        });
+
+        // ESC key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && this.overlay.style.display === 'flex') {
+                this.close(null);
+            }
+        });
+    },
+
+    prompt(title, description, label, defaultValue = '') {
+        return new Promise((resolve) => {
+            this.resolve = resolve;
+
+            // Set content
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-desc').textContent = description;
+            document.getElementById('modal-label').textContent = label;
+            this.input.value = defaultValue;
+
+            // Show modal
+            this.overlay.style.display = 'flex';
+            this.input.focus();
+        });
+    },
+
+    close(value) {
+        this.overlay.style.display = 'none';
+        this.input.value = '';
+        if (this.resolve) {
+            this.resolve(value);
+            this.resolve = null;
+        }
     }
 };
 
@@ -559,7 +664,7 @@ const Editor = {
 
         AppState.saveTimeout = setTimeout(() => {
             this.saveToLocalStorage();
-        }, 1000);
+        }, CONFIG.SAVE_DEBOUNCE_MS);
     },
 
     /**
@@ -571,7 +676,7 @@ const Editor = {
             localStorage.setItem('nousmd-timestamp', new Date().toISOString());
             document.getElementById('status-save').textContent = 'Saved';
         } catch (e) {
-            console.error('Failed to save to localStorage:', e);
+            Logger.error('Failed to save to localStorage:', e);
             document.getElementById('status-save').textContent = 'Save failed';
         }
     },
@@ -585,9 +690,11 @@ const Editor = {
             if (content) {
                 AppState.editor.value = content;
                 this.updatePreview();
+                document.getElementById('status-save').textContent = 'Loaded from storage';
             }
         } catch (e) {
-            console.error('Failed to load from localStorage:', e);
+            Logger.error('Failed to load from localStorage:', e);
+            document.getElementById('status-save').textContent = 'Load failed';
         }
     },
 
@@ -653,12 +760,35 @@ const FileOperations = {
         const file = event.target.files[0];
         if (!file) return;
 
+        // Validate file size
+        if (file.size > CONFIG.MAX_FILE_SIZE) {
+            alert(`File is too large. Maximum size is ${CONFIG.MAX_FILE_SIZE / 1024 / 1024} MB.`);
+            event.target.value = '';
+            return;
+        }
+
+        // Validate file extension
+        const extension = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+        if (!CONFIG.ALLOWED_FILE_TYPES.includes(extension)) {
+            alert(`Invalid file type. Allowed types: ${CONFIG.ALLOWED_FILE_TYPES.join(', ')}`);
+            event.target.value = '';
+            return;
+        }
+
         const reader = new FileReader();
+
         reader.onload = (e) => {
             AppState.editor.value = e.target.result;
             AppState.currentFileName = file.name;
             Editor.updatePreview();
+            document.getElementById('status-save').textContent = 'Loaded';
         };
+
+        reader.onerror = (e) => {
+            Logger.error('Failed to read file:', e);
+            alert(`Failed to read file: ${file.name}`);
+        };
+
         reader.readAsText(file);
 
         // Reset input
@@ -720,17 +850,37 @@ const ToolbarActions = {
         Editor.insertLinePrefix('### ');
     },
 
-    link() {
-        const url = prompt('Enter URL:');
+    async link() {
+        const url = await ModalDialog.prompt(
+            'Insert Link',
+            'Enter the URL for the hyperlink:',
+            'URL',
+            'https://'
+        );
         if (url) {
-            Editor.insertText('[', `](${url})`, 'link text');
+            const sanitizedUrl = SecurityUtils.sanitizeUrl(url);
+            if (sanitizedUrl) {
+                Editor.insertText('[', `](${sanitizedUrl})`, 'link text');
+            } else {
+                alert('Invalid URL. Please use http://, https://, or mailto: protocols.');
+            }
         }
     },
 
-    image() {
-        const url = prompt('Enter image URL:');
+    async image() {
+        const url = await ModalDialog.prompt(
+            'Insert Image',
+            'Enter the image URL:',
+            'Image URL',
+            'https://'
+        );
         if (url) {
-            Editor.insertText('![', `](${url})`, 'alt text');
+            const sanitizedUrl = SecurityUtils.sanitizeUrl(url);
+            if (sanitizedUrl) {
+                Editor.insertText('![', `](${sanitizedUrl})`, 'alt text');
+            } else {
+                alert('Invalid image URL. Please use http:// or https:// protocols.');
+            }
         }
     },
 
@@ -818,7 +968,7 @@ const Divider = {
             const totalWidth = editorPane.offsetWidth + previewPane.offsetWidth;
             const editorPercent = (newEditorWidth / totalWidth) * 100;
 
-            if (editorPercent > 20 && editorPercent < 80) {
+            if (editorPercent > CONFIG.DIVIDER_MIN_PERCENT && editorPercent < CONFIG.DIVIDER_MAX_PERCENT) {
                 editorPane.style.flex = `0 0 ${editorPercent}%`;
                 previewPane.style.flex = `0 0 ${100 - editorPercent}%`;
             }
@@ -835,15 +985,15 @@ const Divider = {
         // Keyboard support for divider
         divider.addEventListener('keydown', (e) => {
             if (e.key === 'ArrowLeft') {
-                const editorPercent = (editorPane.offsetWidth / (editorPane.offsetWidth + previewPane.offsetWidth)) * 100 - 5;
-                if (editorPercent > 20) {
+                const editorPercent = (editorPane.offsetWidth / (editorPane.offsetWidth + previewPane.offsetWidth)) * 100 - CONFIG.DIVIDER_KEYBOARD_STEP;
+                if (editorPercent > CONFIG.DIVIDER_MIN_PERCENT) {
                     editorPane.style.flex = `0 0 ${editorPercent}%`;
                     previewPane.style.flex = `0 0 ${100 - editorPercent}%`;
                 }
                 e.preventDefault();
             } else if (e.key === 'ArrowRight') {
-                const editorPercent = (editorPane.offsetWidth / (editorPane.offsetWidth + previewPane.offsetWidth)) * 100 + 5;
-                if (editorPercent < 80) {
+                const editorPercent = (editorPane.offsetWidth / (editorPane.offsetWidth + previewPane.offsetWidth)) * 100 + CONFIG.DIVIDER_KEYBOARD_STEP;
+                if (editorPercent < CONFIG.DIVIDER_MAX_PERCENT) {
                     editorPane.style.flex = `0 0 ${editorPercent}%`;
                     previewPane.style.flex = `0 0 ${100 - editorPercent}%`;
                 }
@@ -906,10 +1056,10 @@ const KeyboardShortcuts = {
 
 const EventListeners = {
     init() {
-        // Editor input - debounced to reduce parser calls during typing (150ms delay)
+        // Editor input - debounced to reduce parser calls during typing
         const debouncedUpdate = PerformanceUtils.debounce(() => {
             Editor.updatePreview();
-        }, 150);
+        }, CONFIG.EDITOR_DEBOUNCE_MS);
         AppState.editor.addEventListener('input', debouncedUpdate);
 
         // Sync scroll between editor and highlight layer - throttled with RAF
@@ -938,8 +1088,8 @@ const EventListeners = {
                 e.preventDefault();
                 const start = AppState.editor.selectionStart;
                 const end = AppState.editor.selectionEnd;
-                AppState.editor.value = AppState.editor.value.substring(0, start) + '    ' + AppState.editor.value.substring(end);
-                AppState.editor.selectionStart = AppState.editor.selectionEnd = start + 4;
+                AppState.editor.value = AppState.editor.value.substring(0, start) + CONFIG.TAB_SPACES + AppState.editor.value.substring(end);
+                AppState.editor.selectionStart = AppState.editor.selectionEnd = start + CONFIG.TAB_SPACES.length;
             }
         });
     }
@@ -963,6 +1113,7 @@ function init() {
     Editor.loadFromLocalStorage();
 
     // Initialize components
+    ModalDialog.init();
     EventListeners.init();
     KeyboardShortcuts.init();
     Divider.init();
@@ -970,7 +1121,7 @@ function init() {
     // Focus editor
     AppState.editor.focus();
 
-    console.log('NousMD initialized - Less, but better.');
+    Logger.info('Initialized - Less, but better.');
 }
 
 // Start app when DOM is ready

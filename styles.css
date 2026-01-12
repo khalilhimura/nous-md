@@ -19,6 +19,11 @@
     --color-surface: #FFFFFF;
     --color-surface-hover: #F5F5F5;
 
+    /* Syntax Highlighting Colors */
+    --color-syntax-header: #0052A3;      /* Dark blue for headers */
+    --color-syntax-emphasis: #008080;     /* Teal for code blocks */
+    --color-syntax-secondary: #4A4A4A;    /* Gray for quotes/comments */
+
     /* Typography */
     --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     --font-family-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
@@ -55,6 +60,32 @@ body.dark-mode {
     --color-border: #333333;
     --color-surface: #222222;
     --color-surface-hover: #2A2A2A;
+
+    /* Syntax Highlighting Colors - High Contrast for Accessibility */
+    --color-syntax-header: #66B3FF;       /* Light blue - 7:1 contrast */
+    --color-syntax-emphasis: #66D9D9;     /* Light teal - 7:1 contrast */
+    --color-syntax-secondary: #D0D0D0;    /* Light gray - 8:1 contrast */
+}
+
+/* ============================================
+   Accessibility - Skip Navigation Link
+   ============================================ */
+
+.skip-link {
+    position: absolute;
+    top: -40px;
+    left: 0;
+    background: var(--color-accent);
+    color: white;
+    padding: 8px 16px;
+    text-decoration: none;
+    z-index: 100;
+    border-radius: 0 0 4px 0;
+    font-size: 14px;
+}
+
+.skip-link:focus {
+    top: 0;
 }
 
 /* ============================================
@@ -240,7 +271,7 @@ body {
 
 /* Syntax Highlighting Colors */
 .editor-highlight .syntax-header {
-    color: #0052A3;
+    color: var(--color-syntax-header);
 }
 
 .editor-highlight .syntax-bold {
@@ -256,7 +287,7 @@ body {
 }
 
 .editor-highlight .syntax-code-block {
-    color: #0052A3;
+    color: var(--color-syntax-emphasis);
 }
 
 .editor-highlight .syntax-link {
@@ -264,16 +295,16 @@ body {
 }
 
 .editor-highlight .syntax-list {
-    color: #0052A3;
+    color: var(--color-syntax-header);
 }
 
 .editor-highlight .syntax-quote {
-    color: var(--color-text-secondary);
+    color: var(--color-syntax-secondary);
 }
 
 .editor-highlight .syntax-comment {
-    color: var(--color-text-secondary);
-    opacity: 0.6;
+    color: var(--color-syntax-secondary);
+    opacity: 0.8;
 }
 
 /* ============================================
@@ -567,4 +598,128 @@ body {
     .preview-content {
         max-width: 100%;
     }
+}
+
+/* ============================================
+   Modal Dialog
+   ============================================ */
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.modal-dialog {
+    background: var(--color-surface);
+    border-radius: 8px;
+    width: 90%;
+    max-width: 500px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.modal-title {
+    margin: 0;
+    font-size: 18px;
+    color: var(--color-text);
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 24px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: var(--color-text);
+}
+
+.modal-body {
+    padding: 20px;
+}
+
+.modal-description {
+    margin: 0 0 16px 0;
+    color: var(--color-text-secondary);
+    font-size: 14px;
+}
+
+.modal-form {
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-label {
+    font-size: 14px;
+    margin-bottom: 8px;
+    color: var(--color-text);
+}
+
+.modal-input {
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 14px;
+    background: var(--color-bg);
+    color: var(--color-text);
+    margin-bottom: 16px;
+    font-family: var(--font-family);
+}
+
+.modal-input:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 0;
+    border-color: var(--color-accent);
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.modal-btn {
+    padding: 8px 16px;
+    border: 1px solid var(--color-border);
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+    background: var(--color-surface);
+    color: var(--color-text);
+    transition: var(--transition-fast);
+}
+
+.modal-btn:hover {
+    background: var(--color-surface-hover);
+}
+
+.modal-btn-primary {
+    background: var(--color-accent);
+    color: white;
+    border-color: var(--color-accent);
+}
+
+.modal-btn-primary:hover {
+    background: var(--color-accent-hover);
 }
