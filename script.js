@@ -100,6 +100,46 @@ const SecurityUtils = {
 };
 
 // ============================================
+// Performance Optimization Utilities
+// ============================================
+
+const PerformanceUtils = {
+    /**
+     * Debounce function execution to reduce frequency of expensive operations
+     * Cancels previous timer and starts new one on each call
+     *
+     * @param {Function} func - The function to debounce
+     * @param {number} delay - Delay in milliseconds to wait before executing
+     * @returns {Function} - Debounced function
+     */
+    debounce(func, delay) {
+        let timeoutId;
+        return function debounced(...args) {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => func.apply(this, args), delay);
+        };
+    },
+
+    /**
+     * Throttle function execution using requestAnimationFrame
+     * Ensures function runs at most once per animation frame (~16ms at 60 FPS)
+     *
+     * @param {Function} func - The function to throttle
+     * @returns {Function} - Throttled function
+     */
+    throttle(func) {
+        let rafId = null;
+        return function throttled(...args) {
+            if (rafId !== null) return;
+            rafId = requestAnimationFrame(() => {
+                func.apply(this, args);
+                rafId = null;
+            });
+        };
+    }
+};
+
+// ============================================
 // State Management
 // ============================================
 
@@ -250,12 +290,11 @@ const MarkdownParser = {
     },
 
     parseHeaders(text) {
-        return text.replace(/^######\s+(.+)$/gm, '<h6>$1</h6>')
-            .replace(/^#####\s+(.+)$/gm, '<h5>$1</h5>')
-            .replace(/^####\s+(.+)$/gm, '<h4>$1</h4>')
-            .replace(/^###\s+(.+)$/gm, '<h3>$1</h3>')
-            .replace(/^##\s+(.+)$/gm, '<h2>$1</h2>')
-            .replace(/^#\s+(.+)$/gm, '<h1>$1</h1>');
+        // Single pass for all header levels (optimization: 6 passes → 1 pass)
+        return text.replace(/^(#{1,6})\s+(.+)$/gm, (match, hashes, content) => {
+            const level = hashes.length;  // Count # symbols (1-6)
+            return `<h${level}>${content.trim()}</h${level}>`;
+        });
     },
 
     parseBlockquotes(text) {
@@ -867,16 +906,18 @@ const KeyboardShortcuts = {
 
 const EventListeners = {
     init() {
-        // Editor input
-        AppState.editor.addEventListener('input', () => {
+        // Editor input - debounced to reduce parser calls during typing (150ms delay)
+        const debouncedUpdate = PerformanceUtils.debounce(() => {
             Editor.updatePreview();
-        });
+        }, 150);
+        AppState.editor.addEventListener('input', debouncedUpdate);
 
-        // Sync scroll between editor and highlight layer
-        AppState.editor.addEventListener('scroll', () => {
+        // Sync scroll between editor and highlight layer - throttled with RAF
+        const throttledScroll = PerformanceUtils.throttle(() => {
             AppState.highlightDiv.scrollTop = AppState.editor.scrollTop;
             AppState.highlightDiv.scrollLeft = AppState.editor.scrollLeft;
         });
+        AppState.editor.addEventListener('scroll', throttledScroll);
 
         // Toolbar buttons
         document.querySelectorAll('.toolbar-btn').forEach(btn => {
