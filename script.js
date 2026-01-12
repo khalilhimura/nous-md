@@ -270,13 +270,18 @@ const MarkdownParser = {
     parse(markdown) {
         if (!markdown) return '';
 
+        // Create context object to hold temporary state (no module-level state)
+        const context = {
+            codeBlocks: []
+        };
+
         let html = markdown;
 
         // Escape HTML to prevent XSS
         html = this.escapeHtml(html);
 
         // Parse code blocks first (to avoid processing markdown inside them)
-        html = this.parseCodeBlocks(html);
+        html = this.parseCodeBlocks(html, context);
 
         // Parse inline code
         html = this.parseInlineCode(html);
@@ -322,7 +327,7 @@ const MarkdownParser = {
         html = this.parseParagraphs(html);
 
         // Restore code blocks
-        html = this.restoreCodeBlocks(html);
+        html = this.restoreCodeBlocks(html, context);
 
         return html;
     },
@@ -366,24 +371,20 @@ const MarkdownParser = {
         return `__${prefix}_${encoded}__`;
     },
 
-    codeBlocks: [],
-
-    parseCodeBlocks(text) {
-        this.codeBlocks = [];
-
+    parseCodeBlocks(text, context) {
         return text.replace(/```([^\n]*)\n([\s\S]*?)```/g, (match, lang, code) => {
             const placeholder = this.generatePlaceholder('CODE_BLOCK');
             const content = `<pre><code>${code.trim()}</code></pre>`;
 
             // Store with placeholder as key for deterministic lookup
-            this.codeBlocks.push({ placeholder, content });
+            context.codeBlocks.push({ placeholder, content });
 
             return placeholder;
         });
     },
 
-    restoreCodeBlocks(text) {
-        this.codeBlocks.forEach(({ placeholder, content }) => {
+    restoreCodeBlocks(text, context) {
+        context.codeBlocks.forEach(({ placeholder, content }) => {
             // Use exact placeholder match, not index-based
             text = text.replace(placeholder, content);
         });
@@ -510,20 +511,17 @@ const MarkdownParser = {
 // ============================================
 
 const SyntaxHighlighter = {
-    inlineFormats: [], // Store bold/italic patterns to prevent conflicts
-
     /**
      * Extract bold/italic patterns and replace with placeholders
      * Prevents regex conflicts by processing patterns in isolation
      */
-    extractInlineFormats(text) {
-        this.inlineFormats = [];
+    extractInlineFormats(text, context) {
         let index = 0;
 
         // Process triple first (bold+italic combined)
         text = text.replace(/\*\*\*([^*]+)\*\*\*/g, (match, content) => {
             const placeholder = `__INLINE_FORMAT_${index}__`;
-            this.inlineFormats.push(`<span class="syntax-bold">***${content}***</span>`);
+            context.inlineFormats.push(`<span class="syntax-bold">***${content}***</span>`);
             index++;
             return placeholder;
         });
@@ -531,7 +529,7 @@ const SyntaxHighlighter = {
         // Process double asterisk (bold)
         text = text.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
             const placeholder = `__INLINE_FORMAT_${index}__`;
-            this.inlineFormats.push(`<span class="syntax-bold">**${content}**</span>`);
+            context.inlineFormats.push(`<span class="syntax-bold">**${content}**</span>`);
             index++;
             return placeholder;
         });
@@ -539,7 +537,7 @@ const SyntaxHighlighter = {
         // Process double underscore (bold)
         text = text.replace(/__([^_]+)__/g, (match, content) => {
             const placeholder = `__INLINE_FORMAT_${index}__`;
-            this.inlineFormats.push(`<span class="syntax-bold">__${content}__</span>`);
+            context.inlineFormats.push(`<span class="syntax-bold">__${content}__</span>`);
             index++;
             return placeholder;
         });
@@ -547,7 +545,7 @@ const SyntaxHighlighter = {
         // Process single asterisk (italic)
         text = text.replace(/\*([^*]+)\*/g, (match, content) => {
             const placeholder = `__INLINE_FORMAT_${index}__`;
-            this.inlineFormats.push(`<span class="syntax-italic">*${content}*</span>`);
+            context.inlineFormats.push(`<span class="syntax-italic">*${content}*</span>`);
             index++;
             return placeholder;
         });
@@ -555,7 +553,7 @@ const SyntaxHighlighter = {
         // Process single underscore (italic)
         text = text.replace(/_([^_]+)_/g, (match, content) => {
             const placeholder = `__INLINE_FORMAT_${index}__`;
-            this.inlineFormats.push(`<span class="syntax-italic">_${content}_</span>`);
+            context.inlineFormats.push(`<span class="syntax-italic">_${content}_</span>`);
             index++;
             return placeholder;
         });
@@ -566,8 +564,8 @@ const SyntaxHighlighter = {
     /**
      * Restore inline format spans from placeholders
      */
-    restoreInlineFormats(text) {
-        this.inlineFormats.forEach((format, index) => {
+    restoreInlineFormats(text, context) {
+        context.inlineFormats.forEach((format, index) => {
             text = text.replace(`__INLINE_FORMAT_${index}__`, format);
         });
         return text;
@@ -576,11 +574,16 @@ const SyntaxHighlighter = {
     highlight(text) {
         if (!text) return '';
 
+        // Create context object to hold temporary state (no module-level state)
+        const context = {
+            inlineFormats: []
+        };
+
         // Escape HTML
         text = this.escapeHtml(text);
 
         // Extract inline formats FIRST to prevent conflicts
-        text = this.extractInlineFormats(text);
+        text = this.extractInlineFormats(text, context);
 
         // Apply syntax highlighting in order
 
@@ -605,7 +608,7 @@ const SyntaxHighlighter = {
         text = text.replace(/^(&gt;)\s+/gm, '<span class="syntax-quote">&gt; </span>');
 
         // Restore inline formats LAST
-        text = this.restoreInlineFormats(text);
+        text = this.restoreInlineFormats(text, context);
 
         return text;
     },
